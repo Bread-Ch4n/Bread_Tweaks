@@ -1,6 +1,6 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Bread_QOL", "Bread_QOL\Bread_QOL.csproj", "{8A7109F8-3D06-4674-AEC6-91E9E6137B53}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Bread_Tweaks", "Bread_Tweaks\Bread_Tweaks.csproj", "{8A7109F8-3D06-4674-AEC6-91E9E6137B53}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

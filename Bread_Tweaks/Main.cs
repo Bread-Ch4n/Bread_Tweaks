@@ -2,17 +2,19 @@
 using HarmonyLib;
 using Il2CppScheduleOne.Economy;
 using Il2CppScheduleOne.Employees;
+using Il2CppScheduleOne.ItemFramework;
 using Il2CppScheduleOne.Money;
+using Il2CppScheduleOne.ObjectScripts;
 using Il2CppScheduleOne.Trash;
 using MelonLoader;
 using MelonLoader.Utils;
 using UnityEngine;
 
-namespace Bread_QOL;
+namespace Bread_Tweaks;
 
-public class QOL : MelonMod
+public class Main : MelonMod
 {
-    private static readonly string PreferencePath = Path.Combine(MelonEnvironment.UserDataDirectory, "Bread_QOL");
+    private static readonly string PreferencePath = Path.Combine(MelonEnvironment.UserDataDirectory, "Bread_Tweaks");
 
     private static MelonPreferences_Category? _employeeCategory;
     private static MelonPreferences_Entry<bool>? _employeePatchEnabled;
@@ -51,25 +53,32 @@ public class QOL : MelonMod
     private static MelonPreferences_Entry<double>? _handlerSigningFee;
     private static MelonPreferences_Entry<double>? _handlerDailyWage;
     private static MelonPreferences_Entry<double>? _handlerMoveSpeedMultiplier;
-
-
     private static MelonPreferences_Category? _dealerCategory;
     private static MelonPreferences_Entry<bool>? _dealerPatchEnabled;
     private static MelonPreferences_Entry<bool>? _dealerAutoCollectEnabled;
     private static MelonPreferences_Entry<double>? _dealerMoveSpeedMultiplier;
     private static MelonPreferences_Entry<double>? _dealerCut;
-
-
+    private static MelonPreferences_Entry<int>? _dealerInventorySlotAmount;
     private static MelonPreferences_Category? _qolCategory;
     private static MelonPreferences_Entry<bool>? _trashSmallerEnabled;
     private static MelonPreferences_Entry<double>? _trashSmallerScale;
     private static MelonPreferences_Entry<bool>? _trashBagsOnly;
     private static MelonPreferences_Entry<double>? _trashScaleTime;
 
+    private static MelonPreferences_Category? _storageCategory;
+    private static MelonPreferences_Entry<bool>? _storagePatchEnabled;
+    private static MelonPreferences_Entry<int>? _storageBriefcaseSlotAmount;
+    private static MelonPreferences_Entry<int>? _storageLargeStorageRackSlotAmount;
+    private static MelonPreferences_Entry<int>? _storageMediumStorageRackSlotAmount;
+    private static MelonPreferences_Entry<int>? _storageSmallStorageRackSlotAmount;
+
     public override void OnInitializeMelon()
     {
+        if (Directory.Exists(Path.Combine(MelonEnvironment.UserDataDirectory, "Bread_QOL")) &&
+            !Directory.Exists(Path.Combine(MelonEnvironment.UserDataDirectory, "Bread_Tweaks")))
+            Directory.Move(Path.Combine(MelonEnvironment.UserDataDirectory, "Bread_QOL"),
+                PreferencePath); // Migrate from an initial release version
         Directory.CreateDirectory(PreferencePath);
-
         // ----
 
         _employeeCategory = MelonPreferences.CreateCategory("Employee Patches");
@@ -124,15 +133,20 @@ public class QOL : MelonMod
 
         // ----
 
-        _dealerCategory = MelonPreferences.CreateCategory("Dealer Patches");
+        _dealerCategory = MelonPreferences.CreateCategory("Dealer");
         _dealerCategory.SetFilePath(Path.Combine(PreferencePath, "Dealer.cfg"));
 
         _dealerAutoCollectEnabled = _dealerCategory.CreateEntry("Auto Collect", true);
         _dealerCut = _dealerCategory.CreateEntry("Cut", 0.2, description: "[0.0-1.0] formula: cash * (1 - cut)");
         _dealerMoveSpeedMultiplier = _dealerCategory.CreateEntry("Move Speed Multiplier", 1.0);
         _dealerPatchEnabled = _dealerCategory.CreateEntry("Enabled", true);
+        _dealerInventorySlotAmount = _dealerCategory.CreateEntry("Inventory Slot Amount", 5,
+            description:
+            "[0-20] Do not make this smaller or remove the mod. You will loose the items from the extra slots.");
+
 
         if (_dealerCut.Value > 1) _dealerCut.Value = 1;
+        if (_dealerInventorySlotAmount.Value > 20) _dealerInventorySlotAmount.Value = 20;
 
         // ----
 
@@ -149,16 +163,58 @@ public class QOL : MelonMod
             description: "Time it takes to Scale.");
         if (_trashSmallerScale.Value < 0.2) _trashSmallerScale.Value = 0.2;
 
+        // ----
 
+        _storageCategory = MelonPreferences.CreateCategory("Storage Tweaks");
+        _storageCategory.SetFilePath(Path.Combine(PreferencePath, "Storage.cfg"));
+
+        _storagePatchEnabled = _storageCategory.CreateEntry("Custom Storage Sizes Enabled", false,
+            description: "Disabling this with custom values will make you loose the items in the extra slots!");
+        _storageBriefcaseSlotAmount = _storageCategory.CreateEntry("Briefcase Inventory Slot Amount", 4,
+            description:
+            "[0-20] Do not make this smaller or remove the mod. You will loose the items from the extra slots.");
+        _storageLargeStorageRackSlotAmount = _storageCategory.CreateEntry("Large Storage Rack Inventory Slot Amount", 8,
+            description:
+            "[0-20] Do not make this smaller or remove the mod. You will loose the items from the extra slots.");
+        _storageMediumStorageRackSlotAmount = _storageCategory.CreateEntry("Medium Storage Rack Inventory Slot Amount",
+            6,
+            description:
+            "[0-20] Do not make this smaller or remove the mod. You will loose the items from the extra slots.");
+        _storageSmallStorageRackSlotAmount = _storageCategory.CreateEntry("Small Storage Rack Inventory Slot Amount", 4,
+            description:
+            "[0-20] Do not make this smaller or remove the mod. You will loose the items from the extra slots.");
+        if (_storageBriefcaseSlotAmount.Value > 20) _storageBriefcaseSlotAmount.Value = 20;
+        if (_storageLargeStorageRackSlotAmount.Value > 20) _storageLargeStorageRackSlotAmount.Value = 20;
+        if (_storageMediumStorageRackSlotAmount.Value > 20) _storageMediumStorageRackSlotAmount.Value = 20;
+        if (_storageSmallStorageRackSlotAmount.Value > 20) _storageSmallStorageRackSlotAmount.Value = 20;
         // ----
 
 
-        var h = new HarmonyLib.Harmony("Bread_QOL");
+        var h = new HarmonyLib.Harmony("Bread_Tweaks");
 
         if (_employeePatchEnabled.Value) h.PatchAll(typeof(EmployeePatches));
         if (_dealerPatchEnabled.Value) h.PatchAll(typeof(DealerPatches));
         if (_dealerAutoCollectEnabled.Value) h.PatchAll(typeof(DealerAutoCollectPatch));
         if (_trashSmallerEnabled.Value) h.PatchAll(typeof(TrashItemPatches));
+        if (_storagePatchEnabled.Value) h.PatchAll(typeof(StoragePatches));
+    }
+
+    private static void ApplyItemSlotCount(Il2CppSystem.Collections.Generic.List<ItemSlot> itemSlots, int count)
+    {
+        var numberToAdjust = count - itemSlots.Count;
+
+        switch (numberToAdjust)
+        {
+            case > 0:
+            {
+                itemSlots.Capacity += numberToAdjust;
+                for (var i = 0; i < numberToAdjust; i++) itemSlots.Add(new ItemSlot());
+                break;
+            }
+            case < 0:
+                itemSlots.RemoveRange(count, -numberToAdjust);
+                break;
+        }
     }
 
 
@@ -171,9 +227,8 @@ public class QOL : MelonMod
             if (!__instance.gameObject.GetComponent<TrashBag>() && _trashBagsOnly!.Value) return;
 
             var scaler = __instance.gameObject.GetComponent<TrashItemScaler>();
-            if (scaler == null)
-                scaler = __instance.gameObject.AddComponent<TrashItemScaler>();
-            else return;
+            if (scaler != null) return;
+            scaler = __instance.gameObject.AddComponent<TrashItemScaler>();
             scaler.StartScaling((float)_trashScaleTime!.Value, (float)_trashSmallerScale!.Value);
         }
 
@@ -196,11 +251,19 @@ public class QOL : MelonMod
                 }
 
                 transform.localScale = endScale;
-                MelonLogger.Msg("Done!");
             }
 
-            public void StartScaling(float duration, float scale) =>
-                MelonCoroutines.Start(ScaleOverTime(duration, scale));
+            public void StartScaling(float duration, float scale)
+            {
+                try
+                {
+                    MelonCoroutines.Start(ScaleOverTime(duration, scale));
+                }
+                catch
+                {
+                    // Ignore since if the interaction is with the trash grabber, it will fail!
+                }
+            }
         }
     }
 
@@ -232,6 +295,33 @@ public class QOL : MelonMod
         {
             __instance.Cut = (float)_dealerCut!.Value;
             __instance.Movement.MoveSpeedMultiplier = (float)_dealerMoveSpeedMultiplier!.Value;
+
+            ApplyItemSlotCount(__instance.Inventory.ItemSlots, _dealerInventorySlotAmount!.Value);
+        }
+    }
+
+    private class StoragePatches
+    {
+        [HarmonyPatch(typeof(PlaceableStorageEntity), "Start")]
+        [HarmonyPrefix]
+        private static void DealerPatch(PlaceableStorageEntity __instance)
+        {
+            var itemSlots = __instance.StorageEntity.ItemSlots;
+            switch (__instance.StorageEntity.StorageEntityName)
+            {
+                case "Briefcase":
+                    ApplyItemSlotCount(itemSlots, _storageBriefcaseSlotAmount!.Value);
+                    break;
+                case "Large Storage Rack":
+                    ApplyItemSlotCount(itemSlots, _storageLargeStorageRackSlotAmount!.Value);
+                    break;
+                case "Medium Storage Rack":
+                    ApplyItemSlotCount(itemSlots, _storageMediumStorageRackSlotAmount!.Value);
+                    break;
+                case "Small Storage Rack":
+                    ApplyItemSlotCount(itemSlots, _storageSmallStorageRackSlotAmount!.Value);
+                    break;
+            }
         }
     }
 
