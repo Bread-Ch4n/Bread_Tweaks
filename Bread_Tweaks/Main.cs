@@ -1,10 +1,11 @@
 ﻿using System.Collections;
+using System.Reflection.Emit;
 using HarmonyLib;
 using Il2CppScheduleOne.Economy;
 using Il2CppScheduleOne.Employees;
-using Il2CppScheduleOne.ItemFramework;
 using Il2CppScheduleOne.Money;
-using Il2CppScheduleOne.ObjectScripts;
+using Il2CppScheduleOne.NPCs;
+using Il2CppScheduleOne.Storage;
 using Il2CppScheduleOne.Trash;
 using MelonLoader;
 using MelonLoader.Utils;
@@ -103,7 +104,7 @@ public class Main : MelonMod
         _chemistCategory = MelonPreferences.CreateCategory("Chemist");
         _chemistCategory.SetFilePath(Path.Combine(PreferencePath, "Employees.cfg"));
         _chemistDailyWage = _chemistCategory.CreateEntry("Daily Wage", 200.0);
-        _chemistMaxStations = _chemistCategory.CreateEntry("Max Stations", 3);
+        _chemistMaxStations = _chemistCategory.CreateEntry("Max Stations", 4);
         _chemistMoveSpeedMultiplier = _chemistCategory.CreateEntry("Move Speed Multiplier", 1.0);
         _chemistSigningFee = _chemistCategory.CreateEntry("Signing Fee", 1000.0);
         _chemistSigningFeeEnabled = _chemistCategory.CreateEntry("Custom Signing Fee", false,
@@ -199,25 +200,6 @@ public class Main : MelonMod
         if (_storagePatchEnabled.Value) h.PatchAll(typeof(StoragePatches));
     }
 
-    private static void ApplyItemSlotCount(Il2CppSystem.Collections.Generic.List<ItemSlot> itemSlots, int count)
-    {
-        var numberToAdjust = count - itemSlots.Count;
-
-        switch (numberToAdjust)
-        {
-            case > 0:
-            {
-                itemSlots.Capacity += numberToAdjust;
-                for (var i = 0; i < numberToAdjust; i++) itemSlots.Add(new ItemSlot());
-                break;
-            }
-            case < 0:
-                itemSlots.RemoveRange(count, -numberToAdjust);
-                break;
-        }
-    }
-
-
     private class TrashItemPatches
     {
         [HarmonyPatch(typeof(TrashItem), "Interacted")]
@@ -242,28 +224,23 @@ public class Main : MelonMod
                 var startScale = transform.localScale;
                 var endScale = startScale * scale;
                 var elapsed = 0f;
+
                 while (elapsed < duration)
                 {
+                    if (transform == null) yield break;
+
                     var t = _scaleCurve.Evaluate(elapsed / duration);
                     transform.localScale = Vector3.Lerp(startScale, endScale, t);
                     elapsed += Time.deltaTime;
                     yield return null;
                 }
 
-                transform.localScale = endScale;
+                if (transform != null) transform.localScale = endScale;
             }
 
-            public void StartScaling(float duration, float scale)
-            {
-                try
-                {
-                    MelonCoroutines.Start(ScaleOverTime(duration, scale));
-                }
-                catch
-                {
-                    // Ignore since if the interaction is with the trash grabber, it will fail!
-                }
-            }
+
+            public void StartScaling(float duration, float scale) =>
+                MelonCoroutines.Start(ScaleOverTime(duration, scale));
         }
     }
 
@@ -295,33 +272,35 @@ public class Main : MelonMod
         {
             __instance.Cut = (float)_dealerCut!.Value;
             __instance.Movement.MoveSpeedMultiplier = (float)_dealerMoveSpeedMultiplier!.Value;
-
-            ApplyItemSlotCount(__instance.Inventory.ItemSlots, _dealerInventorySlotAmount!.Value);
         }
+
+        [HarmonyPatch(typeof(NPCInventory), "Awake")]
+        [HarmonyPrefix]
+        private static void DealerInvPatch(NPCInventory __instance) =>
+            _ = __instance.GetComponentInParent<Dealer>()
+                ? __instance.SlotCount = _dealerInventorySlotAmount!.Value
+                : (object)null!;
     }
 
     private class StoragePatches
     {
-        [HarmonyPatch(typeof(PlaceableStorageEntity), "Start")]
+        [HarmonyPatch(typeof(StorageEntity), "Awake")]
         [HarmonyPrefix]
-        private static void DealerPatch(PlaceableStorageEntity __instance)
+        private static void StoragePatch(StorageEntity __instance)
         {
-            var itemSlots = __instance.StorageEntity.ItemSlots;
-            switch (__instance.StorageEntity.StorageEntityName)
+            if (__instance == null) return;
+
+            var entityName = __instance.StorageEntityName;
+            if (string.IsNullOrEmpty(entityName)) return;
+
+            __instance.SlotCount = entityName switch
             {
-                case "Briefcase":
-                    ApplyItemSlotCount(itemSlots, _storageBriefcaseSlotAmount!.Value);
-                    break;
-                case "Large Storage Rack":
-                    ApplyItemSlotCount(itemSlots, _storageLargeStorageRackSlotAmount!.Value);
-                    break;
-                case "Medium Storage Rack":
-                    ApplyItemSlotCount(itemSlots, _storageMediumStorageRackSlotAmount!.Value);
-                    break;
-                case "Small Storage Rack":
-                    ApplyItemSlotCount(itemSlots, _storageSmallStorageRackSlotAmount!.Value);
-                    break;
-            }
+                "Briefcase" => _storageBriefcaseSlotAmount!.Value,
+                "Large Storage Rack" => _storageLargeStorageRackSlotAmount!.Value,
+                "Medium Storage Rack" => _storageMediumStorageRackSlotAmount!.Value,
+                "Small Storage Rack" => _storageSmallStorageRackSlotAmount!.Value,
+                _ => __instance.SlotCount
+            };
         }
     }
 
